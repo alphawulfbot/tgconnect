@@ -10,7 +10,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"  # Replace with your actual bot token
+BOT_TOKEN = "7814915502:AAEvJYdzy79cvZnGEP8BqlC1MF0yvAgTsXo"  # Replace with your actual bot token
 WEB_APP_URL = "https://alphawulf-frontend-xn9o.onrender.com"  # Replace with your web app URL
 
 class AlphaWulfBot:
