@@ -1,4 +1,6 @@
 import logging
+import os
+from flask import Flask, request, jsonify
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -10,8 +12,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-BOT_TOKEN = "7814915502:AAEvJYdzy79cvZnGEP8BqlC1MF0yvAgTsXo"  # Replace with your actual bot token
-WEB_APP_URL = "https://alphawulf-frontend-xn9o.onrender.com"  # Replace with your web app URL
+BOT_TOKEN = os.getenv("BOT_TOKEN", "7814915502:AAEvJYdzy79cvZnGEP8BqlC1MF0yvAgTsXo")
+WEB_APP_URL = os.getenv("WEB_APP_URL", "https://alphawulf-frontend-xn9o.onrender.com")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")  # Set this to your deployed webhook URL
+PORT = int(os.getenv("PORT", 5000))
+
+# Flask app
+app = Flask(__name__)
 
 class AlphaWulfBot:
     def __init__(self, token: str, web_app_url: str):
@@ -274,57 +281,69 @@ Click the button below to manage your referrals!"""
         """Handle errors"""
         logger.error(f"Exception while handling an update: {context.error}")
 
-    def run(self):
-        """Start the bot"""
-        # Add error handler
-        self.application.add_error_handler(self.error_handler)
-        
-        logger.info("Starting Alpha Wulf Bot...")
-        self.application.run_polling(allowed_updates=Update.ALL_TYPES)
+    async def setup_webhook(self, webhook_url: str):
+        """Set up webhook for the bot"""
+        await self.application.bot.set_webhook(url=webhook_url)
+        logger.info(f"Webhook set to: {webhook_url}")
 
-def main():
-    """Main function to run the bot"""
-    if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
-        print("❌ Please set your BOT_TOKEN in the script!")
-        return
-    
-    bot = AlphaWulfBot(BOT_TOKEN, WEB_APP_URL)
-    bot.run()
+    async def process_update(self, update_data):
+        """Process incoming webhook update"""
+        update = Update.de_json(update_data, self.application.bot)
+        await self.application.process_update(update)
+
+# Initialize bot
+bot = AlphaWulfBot(BOT_TOKEN, WEB_APP_URL)
+
+# Add error handler
+bot.application.add_error_handler(bot.error_handler)
+
+@app.route('/')
+def health_check():
+    """Health check endpoint"""
+    return jsonify({"status": "Alpha Wulf Bot is running", "version": "1.0.0"})
+
+@app.route('/webhook', methods=['POST'])
+async def webhook():
+    """Handle incoming webhook from Telegram"""
+    try:
+        update_data = request.get_json()
+        if update_data:
+            await bot.process_update(update_data)
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        logger.error(f"Error processing webhook: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/set_webhook', methods=['POST'])
+async def set_webhook():
+    """Set webhook URL for the bot"""
+    try:
+        webhook_url = request.json.get('webhook_url')
+        if not webhook_url:
+            return jsonify({"status": "error", "message": "webhook_url is required"}), 400
+        
+        await bot.setup_webhook(webhook_url)
+        return jsonify({"status": "success", "message": f"Webhook set to {webhook_url}"})
+    except Exception as e:
+        logger.error(f"Error setting webhook: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/bot_info')
+def bot_info():
+    """Get bot information"""
+    return jsonify({
+        "bot_token": BOT_TOKEN[:10] + "..." if BOT_TOKEN else "Not set",
+        "web_app_url": WEB_APP_URL,
+        "webhook_url": WEBHOOK_URL,
+        "port": PORT
+    })
 
 if __name__ == '__main__':
-    main()
-
-# Instructions for deployment:
-"""
-1. Install required packages:
-   pip install python-telegram-bot
-
-2. Set your bot token:
-   - Replace BOT_TOKEN with your actual bot token from @BotFather
-   - Replace WEB_APP_URL with your frontend URL
-
-3. Configure bot settings in @BotFather:
-   - Set bot commands using /setcommands:
-     start - Start the game
-     play - Launch the game
-     help - Show help message
-     stats - View your statistics
-     referral - Get referral link
-     withdraw - Withdrawal options
-     upgrade - View upgrades
-     admin - Admin panel (for admins only)
-
-4. Set up web app in @BotFather:
-   - Use /newapp command
-   - Set your web app URL
-   - Set short name for your app
-
-5. Run the bot:
-   python telegram_bot_handlers.py
-
-6. Test the bot:
-   - Send /start to your bot
-   - The web app should launch automatically
-   - All commands should work and redirect to appropriate sections
-"""
+    logger.info("Starting Alpha Wulf Bot Web Service...")
+    logger.info(f"Bot Token: {BOT_TOKEN[:10]}..." if BOT_TOKEN else "Bot Token: Not set")
+    logger.info(f"Web App URL: {WEB_APP_URL}")
+    logger.info(f"Port: {PORT}")
+    
+    # Run Flask app
+    app.run(host='0.0.0.0', port=PORT, debug=False)
 
